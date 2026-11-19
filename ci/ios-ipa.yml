@@ -1,0 +1,56 @@
+name: 打包 iOS IPA
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-ipa:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      # Capacitor 8 需要 Xcode 26+
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: 安装依赖并构建 Vue
+        run: |
+          npm ci
+          npm run build
+
+      - name: 同步到 iOS 工程
+        run: npx cap sync ios
+
+      - name: 编译 iOS（不签名）
+        run: |
+          xcodebuild \
+            -project ios/App/App.xcodeproj \
+            -scheme App \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            build
+
+      - name: 打包 IPA
+        run: |
+          mkdir -p Payload
+          cp -R build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry VueIosDemo-unsigned.ipa Payload
+          ls -lh VueIosDemo-unsigned.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: VueIosDemo-ipa
+          path: VueIosDemo-unsigned.ipa
